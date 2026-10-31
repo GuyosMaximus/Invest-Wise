@@ -6,41 +6,11 @@ import json
 import os
 import time
 
-# --- הגדרת תצורת העמוד ---
-st.set_page_config(page_title="ניהול תיק השקעות", layout="wide")
-
-
-# --- מנגנון אבטחה וכניסה עם סיסמה ---
-def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-
-    if not st.session_state["authenticated"]:
-        col_login, _ = st.columns([1, 2])
-        with col_login:
-            st.markdown("<h2 style='text-align: right; direction: rtl;'>כניסה מאובטחת</h2>", unsafe_allow_html=True)
-            pwd = st.text_input("הזן סיסמה", type="password")
-
-            # בדיקת סיסמה מול Secrets בענן או ברירת מחדל מקומית
-            correct_pass = st.secrets.get("APP_PASSWORD", "123456") if hasattr(st,
-                                                                               "secrets") and "APP_PASSWORD" in st.secrets else "123456"
-
-            if st.button("כניסה"):
-                if pwd == correct_pass:
-                    st.session_state["authenticated"] = True
-                    st.rerun()
-                else:
-                    st.error("סיסמה שגויה")
-        return False
-    return True
-
-
-if not check_password():
-    st.stop()
+# --- הגדרת תצורת העמוד (חייב להופיע ראשון) ---
+st.set_page_config(page_title="Invest Wise", layout="wide")
 
 # --- טעינה ושמירה מאובטחת ---
 DATA_FILE = "portfolio_data.json"
-
 
 def load_portfolio():
     # אם רצים ב-Streamlit Cloud והוגדרו נתונים ב-Secrets
@@ -58,17 +28,39 @@ def load_portfolio():
             return {}
     return {}
 
-
 def save_portfolio(portfolio_data):
-    # שמירה מקומית בלבד
+    # שמירה מקומית
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(portfolio_data, f, ensure_ascii=False, indent=4)
 
+# --- מנגנון אבטחה וכניסה עם סיסמה ---
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
 
-# הגדרת תצורת העמוד
-st.set_page_config(page_title="ניהול תיק השקעות", layout="wide")
+    if not st.session_state["authenticated"]:
+        col_login, _ = st.columns([1, 2])
+        with col_login:
+            st.markdown("<h2 style='text-align: right; direction: rtl;'>כניסה מאובטחת</h2>", unsafe_allow_html=True)
+            pwd = st.text_input("הזן סיסמה", type="password")
 
-# הזרקת CSS לעיצוב
+            correct_pass = st.secrets.get("APP_PASSWORD", "123456") if hasattr(st, "secrets") and "APP_PASSWORD" in st.secrets else "123456"
+
+            if st.button("כניסה"):
+                if pwd == correct_pass:
+                    st.session_state["authenticated"] = True
+                    # טעינה מפורשת של התיק מתוך ה-Secrets בעת כניסה
+                    st.session_state['portfolio'] = load_portfolio()
+                    st.rerun()
+                else:
+                    st.error("סיסמה שגויה")
+        return False
+    return True
+
+if not check_password():
+    st.stop()
+
+# --- הזרקת CSS לעיצוב ---
 st.markdown("""
 <style>
 [data-testid="stForm"] {
@@ -99,7 +91,7 @@ button { direction: rtl; }
 /* תיקון עיצוב לטקסטים כהים בכפתורי רדיו ושדות */
 [data-testid="stForm"] p { color: white !important; }
 div[role="radiogroup"] label p { color: white !important; font-size: 15px; }
-.stRadio label p { color: #a4c9b9 !important; } /* כותרת הרדיו */
+.stRadio label p { color: #a4c9b9 !important; }
 
 .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
     background-color: #143e32 !important;
@@ -118,7 +110,7 @@ div[role="radiogroup"] label p { color: white !important; font-size: 15px; }
     background-color: #2ab588 !important;
 }
 
-/* עיצוב הלשוניות (Tabs) */
+/* עיצוב הלשוניות */
 .stTabs [data-baseweb="tab-list"] {
     direction: rtl;
     gap: 20px;
@@ -127,6 +119,7 @@ div[role="radiogroup"] label p { color: white !important; font-size: 15px; }
     font-size: 18px;
     font-weight: 600;
 }
+
 /* תיקון צבע הטקסט בתוך כפתורי הטופס */
 [data-testid="stFormSubmitButton"] button p {
     color: #082920 !important;
@@ -134,12 +127,11 @@ div[role="radiogroup"] label p { color: white !important; font-size: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
-# אתחול
+# אתחול התיק במידה ולא אותחל
 if 'portfolio' not in st.session_state:
     st.session_state['portfolio'] = load_portfolio()
 
 # --- מנגנון תיקון אוטומטי למזומן ---
-# אם יש CASH בטעות, נמיר אותו ל-$CASH ונאחד יתרות כדי למנוע כפילויות
 if 'CASH' in st.session_state['portfolio']:
     cash_amount = st.session_state['portfolio'].pop('CASH')['quantity']
     if '$CASH' in st.session_state['portfolio']:
@@ -158,30 +150,25 @@ tab1, tab2 = st.tabs(["➕ הוספת נכס ראשוני לתיק", "💱 מס�
 # לשונית 1: הוספה ראשונית
 with tab1:
     with st.form(key='add_position_form', clear_on_submit=True):
-        st.markdown("<h2 style='color: white; text-align: right; margin-bottom: 0px;'>הוספת פוזיציה חדשה</h2>",
-                    unsafe_allow_html=True)
-        st.markdown(
-            "<p style='color: #2ab588; font-size: 16px; text-align: right; margin-bottom: 25px;'>הזינו את פרטי ההחזקה להקמה ראשונית של התיק</p>",
-            unsafe_allow_html=True)
+        st.markdown("<h2 style='color: white; text-align: right; margin-bottom: 0px;'>הוספת פוזיציה חדשה</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #2ab588; font-size: 16px; text-align: right; margin-bottom: 25px;'>הזינו את פרטי ההחזקה להקמה ראשונית של התיק</p>", unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
 
         with col2:
             ticker_input = st.text_input("סימול, לדוגמה AAPL", placeholder="למשל TSLA")
             quantity_input = st.number_input("כמות", min_value=0, step=1)
-            asset_type = st.selectbox("סוג נכס", options=["מניות", "אופציות", "מזומן", "קריפטו"],
-                                      label_visibility="collapsed")
+            asset_type = st.selectbox("סוג נכס", options=["מניות", "אופציות", "מזומן", "קריפטו"], label_visibility="collapsed")
 
         with col1:
             asset_name = st.text_input("שם הנכס (אופציונלי)")
-            manual_price = st.number_input("מחיר ליחידה ($)", min_value=0.0, step=0.1,
-                                           help="השאר 0.0 כדי למשוך מחיר אוטומטית בזמן אמת")
+            manual_price = st.number_input("מחיר ליחידה ($)", min_value=0.0, step=0.1, help="השאר 0.0 כדי למשוך מחיר אוטומטית בזמן אמת")
             st.markdown("<br>", unsafe_allow_html=True)
             submit_add = st.form_submit_button(label="➕ הוספה לתיק")
 
         if submit_add and ticker_input:
             ticker = ticker_input.upper()
-            if ticker == 'CASH':  # אכיפת שם אחיד למזומן כבר בהזנה
+            if ticker == 'CASH':
                 ticker = '$CASH'
 
             if ticker in st.session_state['portfolio']:
@@ -197,16 +184,12 @@ with tab1:
 
 # לשונית 2: מסחר וניהול מזומן
 with tab2:
-    available_tickers = [t for t in st.session_state['portfolio'].keys() if
-                         t not in ['CASH', '$CASH'] and st.session_state['portfolio'][t].get('name') != 'מזומן']
+    available_tickers = [t for t in st.session_state['portfolio'].keys() if t not in ['CASH', '$CASH'] and st.session_state['portfolio'][t].get('name') != 'מזומן']
 
     # טופס מסחר מניות
     with st.form(key='trade_form', clear_on_submit=True):
-        st.markdown("<h2 style='color: white; text-align: right; margin-bottom: 0px;'>ביצוע פעולה במניה</h2>",
-                    unsafe_allow_html=True)
-        st.markdown(
-            "<p style='color: #2ab588; font-size: 16px; text-align: right; margin-bottom: 25px;'>בחרו מניה מתוך התיק. המערכת תסנכרן את הכמות ואת שווי המזומן אוטומטית.</p>",
-            unsafe_allow_html=True)
+        st.markdown("<h2 style='color: white; text-align: right; margin-bottom: 0px;'>ביצוע פעולה במניה</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #2ab588; font-size: 16px; text-align: right; margin-bottom: 25px;'>בחרו מניה מתוך התיק. המערכת תסנכרן את הכמות ואת שווי המזומן אוטומטית.</p>", unsafe_allow_html=True)
 
         col_t1, col_t2, col_t3 = st.columns([1, 1, 1.5])
 
@@ -232,8 +215,7 @@ with tab2:
                     if trade_quantity <= st.session_state['portfolio'][trade_ticker]['quantity']:
                         st.session_state['portfolio'][trade_ticker]['quantity'] -= trade_quantity
                         st.session_state['portfolio']['$CASH']['quantity'] += cash_impact
-                        st.success(
-                            f"נמכרו {trade_quantity} מניות של {trade_ticker}. התווספו ${cash_impact:,.2f} למזומן.")
+                        st.success(f"נמכרו {trade_quantity} מניות של {trade_ticker}. התווספו ${cash_impact:,.2f} למזומן.")
                         if st.session_state['portfolio'][trade_ticker]['quantity'] <= 0:
                             del st.session_state['portfolio'][trade_ticker]
                     else:
@@ -252,11 +234,8 @@ with tab2:
 
     # טופס ניהול מזומן ישיר
     with st.form(key='cash_form', clear_on_submit=True):
-        st.markdown("<h2 style='color: white; text-align: right; margin-bottom: 0px;'>הפקדה / משיכת מזומן ($CASH)</h2>",
-                    unsafe_allow_html=True)
-        st.markdown(
-            "<p style='color: #2ab588; font-size: 16px; text-align: right; margin-bottom: 25px;'>עדכן את יתרת המזומן החופשי בחשבון ללא קשר לפעולות מסחר.</p>",
-            unsafe_allow_html=True)
+        st.markdown("<h2 style='color: white; text-align: right; margin-bottom: 0px;'>הפקדה / משיכת מזומן ($CASH)</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #2ab588; font-size: 16px; text-align: right; margin-bottom: 25px;'>עדכן את יתרת המזומן החופשי בחשבון ללא קשר לפעולות מסחר.</p>", unsafe_allow_html=True)
 
         col_c1, col_c2, col_c3 = st.columns([1, 1, 1.5])
 
