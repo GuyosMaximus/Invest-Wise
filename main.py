@@ -6,11 +6,50 @@ import json
 import os
 import time
 
-# --- הגדרות קובץ שמירה ---
+# --- הגדרת תצורת העמוד ---
+st.set_page_config(page_title="ניהול תיק השקעות", layout="wide")
+
+
+# --- מנגנון אבטחה וכניסה עם סיסמה ---
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        col_login, _ = st.columns([1, 2])
+        with col_login:
+            st.markdown("<h2 style='text-align: right; direction: rtl;'>כניסה מאובטחת</h2>", unsafe_allow_html=True)
+            pwd = st.text_input("הזן סיסמה", type="password")
+
+            # בדיקת סיסמה מול Secrets בענן או ברירת מחדל מקומית
+            correct_pass = st.secrets.get("APP_PASSWORD", "123456") if hasattr(st,
+                                                                               "secrets") and "APP_PASSWORD" in st.secrets else "123456"
+
+            if st.button("כניסה"):
+                if pwd == correct_pass:
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("סיסמה שגויה")
+        return False
+    return True
+
+
+if not check_password():
+    st.stop()
+
+# --- טעינה ושמירה מאובטחת ---
 DATA_FILE = "portfolio_data.json"
 
 
 def load_portfolio():
+    # אם רצים ב-Streamlit Cloud והוגדרו נתונים ב-Secrets
+    if hasattr(st, "secrets") and "INITIAL_PORTFOLIO" in st.secrets:
+        try:
+            return json.loads(st.secrets["INITIAL_PORTFOLIO"])
+        except:
+            pass
+    # אם רצים מקומית במחשב
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
@@ -21,6 +60,7 @@ def load_portfolio():
 
 
 def save_portfolio(portfolio_data):
+    # שמירה מקומית בלבד
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(portfolio_data, f, ensure_ascii=False, indent=4)
 
